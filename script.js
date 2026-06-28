@@ -5,6 +5,7 @@
     let playlist = [];
     let shuffleMode = false;
     let loopMode = 2; // 0=off, 1=one, 2=all
+    let isHidden = false;
 
     const playBtn = document.getElementById('playBtn');
     const prevBtn = document.getElementById('prevBtn');
@@ -32,6 +33,8 @@
     const modalOverlay = document.getElementById('modalOverlay');
     const modalPlaylistContainer = document.getElementById('modalPlaylistContainer');
     const modalCloseBtn = document.getElementById('modalCloseBtn');
+    const eyeBtn = document.getElementById('eyeBtn');
+    const eyeIcon = document.getElementById('eyeIcon');
 
     let audioCtx = null;
     let analyser = null;
@@ -418,7 +421,7 @@
         updateButtons();
         audio.onerror = () => {
             trackTitle.textContent = 'ERROR: ' + track.name;
-            console.error('Audio loading error:', audio.error);
+            console.error('Audio load error:', audio.error);
         };
     }
 
@@ -509,6 +512,26 @@
     function updateShuffleIcon() {
         const use = shuffleIcon.querySelector('use');
         use.setAttribute('href', shuffleMode ? '#shuffle-on' : '#shuffle-off');
+    }
+
+    function toggleHiddenMode() {
+        const frame = document.querySelector('.frame');
+        isHidden = !isHidden;
+        frame.classList.toggle('hidden-mode', isHidden);
+        const use = eyeIcon.querySelector('use');
+        use.setAttribute('href', isHidden ? '#eye-closed' : '#eye-open');
+        eyeBtn.classList.toggle('active', isHidden);
+    }
+
+    function disableHiddenMode() {
+        if (isHidden) {
+            const frame = document.querySelector('.frame');
+            isHidden = false;
+            frame.classList.remove('hidden-mode');
+            const use = eyeIcon.querySelector('use');
+            use.setAttribute('href', '#eye-open');
+            eyeBtn.classList.remove('active');
+        }
     }
 
     function setupAudioContext() {
@@ -634,6 +657,19 @@
         updateButtons();
     });
 
+    eyeBtn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        toggleHiddenMode();
+    });
+
+    document.addEventListener('click', (e) => {
+        if (isHidden) {
+            if (!eyeBtn.contains(e.target)) {
+                disableHiddenMode();
+            }
+        }
+    });
+
     let menuOpen = false;
     loadBtn.addEventListener('click', (e) => {
         e.stopPropagation();
@@ -692,7 +728,7 @@
             case 'ArrowRight': e.preventDefault(); if (audio.src) audio.currentTime = Math.min(audio.duration || 0, audio.currentTime + 5); break;
             case 'ArrowUp': e.preventDefault(); audio.volume = Math.min(1, audio.volume + 0.05); volumeBar.value = audio.volume; saveSettings(); break;
             case 'ArrowDown': e.preventDefault(); audio.volume = Math.max(0, audio.volume - 0.05); volumeBar.value = audio.volume; saveSettings(); break;
-            case 'Escape': if (modalOverlay.classList.contains('open')) closeModal(); break;
+            case 'Escape': if (modalOverlay.classList.contains('open')) closeModal(); else if (isHidden) disableHiddenMode(); break;
         }
     });
 
