@@ -5,7 +5,7 @@
     let playlist = [];
     let shuffleMode = false;
     let loopMode = 0; // 0=off, 1=one, 2=all
-	
+
     const playBtn = document.getElementById('playBtn');
     const prevBtn = document.getElementById('prevBtn');
     const nextBtn = document.getElementById('nextBtn');
@@ -37,7 +37,6 @@
     let analyser = null;
     let source = null;
     let animationId = null;
-    let currentFileURL = null;
 
     function formatTime(seconds) {
         if (isNaN(seconds) || !isFinite(seconds) || seconds < 0) return '00:00';
@@ -62,18 +61,17 @@
                 URL.revokeObjectURL(url);
             };
 
-            const onLoaded = () => {
+            video.addEventListener('loadedmetadata', () => {
                 video.currentTime = 0.1;
-            };
-
-            const onSeeked = () => {
+            });
+            video.addEventListener('seeked', () => {
                 try {
-                    const canvas = document.createElement('canvas');
-                    canvas.width = video.videoWidth || 320;
-                    canvas.height = video.videoHeight || 180;
-                    const ctx = canvas.getContext('2d');
-                    ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
-                    canvas.toBlob((blob) => {
+                    const cv = document.createElement('canvas');
+                    cv.width = video.videoWidth || 320;
+                    cv.height = video.videoHeight || 180;
+                    const c = cv.getContext('2d');
+                    c.drawImage(video, 0, 0, cv.width, cv.height);
+                    cv.toBlob((blob) => {
                         if (blob) {
                             const coverUrl = URL.createObjectURL(blob);
                             cleanup();
@@ -87,54 +85,73 @@
                     cleanup();
                     resolve(null);
                 }
-            };
-
-            video.addEventListener('loadedmetadata', onLoaded);
-            video.addEventListener('seeked', onSeeked);
-            video.addEventListener('error', () => {
-                cleanup();
-                resolve(null);
             });
-
-            setTimeout(() => {
-                cleanup();
-                resolve(null);
-            }, 5000);
+            video.addEventListener('error', () => { cleanup(); resolve(null); });
+            setTimeout(() => { cleanup(); resolve(null); }, 5000);
         });
     }
 
     function extractCoverFromFile(file) {
         return new Promise((resolve) => {
+            if (file.type.startsWith('video/') || file.name.match(/\.(mp4|mov|avi|mkv|webm)$/i)) {
+                extractVideoCover(file).then(resolve);
+                return;
+            }
+
             if (file.type.startsWith('audio/') || file.name.match(/\.(mp3|flac|ogg|wav|m4a|aac)$/i)) {
                 jsmediatags.read(file, {
                     onSuccess: (tag) => {
                         const picture = tag.tags.picture;
-                        if (picture) {
-                            const blob = new Blob([picture.data], { type: picture.format });
+                        if (!picture || !picture.data || picture.data.length === 0) {
+                            resolve(null);
+                            return;
+                        }
+
+                        let mime = picture.format || 'image/jpeg';
+                        if (mime === 'image/jpg') mime = 'image/jpeg';
+
+                        let imageData;
+                        try {
+                            if (picture.data instanceof ArrayBuffer) {
+                                imageData = new Uint8Array(picture.data);
+                            } else if (picture.data instanceof Uint8Array) {
+                                imageData = picture.data;
+                            } else if (Array.isArray(picture.data)) {
+                                imageData = new Uint8Array(picture.data);
+                            } else {
+                                imageData = new Uint8Array(picture.data);
+                            }
+                        } catch (e) {
+                            resolve(null);
+                            return;
+                        }
+
+                        try {
+                            const blob = new Blob([imageData], { type: mime });
+                            if (blob.size === 0) {
+                                resolve(null);
+                                return;
+                            }
                             const url = URL.createObjectURL(blob);
                             resolve(url);
-                        } else {
-                            if (file.name.match(/\.(mp4|mov|avi|mkv|webm)$/i)) {
-                                extractVideoCover(file).then(resolve);
-                            } else {
+                        } catch (e) {
+                            try {
+                                let binary = '';
+                                for (let i = 0; i < imageData.length; i++) {
+                                    binary += String.fromCharCode(imageData[i]);
+                                }
+                                const base64 = btoa(binary);
+                                const dataUrl = `data:${mime};base64,${base64}`;
+                                resolve(dataUrl);
+                            } catch (e2) {
                                 resolve(null);
                             }
                         }
                     },
-                    onError: () => {
-                        if (file.name.match(/\.(mp4|mov|avi|mkv|webm)$/i)) {
-                            extractVideoCover(file).then(resolve);
-                        } else {
-                            resolve(null);
-                        }
-                    }
+                    onError: () => { resolve(null); }
                 });
             } else {
-                if (file.type.startsWith('video/') || file.name.match(/\.(mp4|mov|avi|mkv|webm)$/i)) {
-                    extractVideoCover(file).then(resolve);
-                } else {
-                    resolve(null);
-                }
+                resolve(null);
             }
         });
     }
@@ -142,12 +159,19 @@
     function setCover(url) {
         if (url) {
             coverImage.src = url;
-            coverImage.classList.remove('show', 'fade-in');
-            void coverImage.offsetWidth;
-            coverImage.classList.add('show', 'fade-in');
+            coverImage.style.display = 'block';
             coverPlaceholder.style.display = 'none';
+            coverImage.classList.add('show');
+            coverImage.classList.remove('fade-in');
+            coverImage.onload = () => {};
+            coverImage.onerror = () => {
+                coverImage.style.display = 'none';
+                coverPlaceholder.style.display = 'block';
+                coverImage.classList.remove('show');
+            };
         } else {
             coverImage.src = '';
+            coverImage.style.display = 'none';
             coverImage.classList.remove('show', 'fade-in');
             coverPlaceholder.style.display = 'block';
         }
@@ -155,20 +179,9 @@
 
     function renderPlaylist() {
         playlistContainer.innerHTML = '';
-
         if (playlist.length === 0) return;
-
-        let startIdx;
-        if (currentTrackIndex >= 0) {
-            startIdx = currentTrackIndex + 1;
-        } else {
-            startIdx = 0;
-        }
-
-        if (startIdx >= playlist.length) {
-            startIdx = 0;
-        }
-
+        let startIdx = currentTrackIndex >= 0 ? currentTrackIndex + 1 : 0;
+        if (startIdx >= playlist.length) startIdx = 0;
         const endIdx = Math.min(startIdx + 3, playlist.length);
         for (let i = startIdx; i < endIdx; i++) {
             const track = playlist[i];
@@ -188,13 +201,12 @@
             item.onclick = () => playTrack(i);
             playlistContainer.appendChild(item);
         }
-
         if (playlist.length > 3) {
-            const toggleItem = document.createElement('div');
-            toggleItem.className = 'playlist-toggle-item';
-            toggleItem.textContent = '▼ SHOW ALL';
-            toggleItem.onclick = openModal;
-            playlistContainer.appendChild(toggleItem);
+            const toggle = document.createElement('div');
+            toggle.className = 'playlist-toggle-item';
+            toggle.textContent = '▼ SHOW ALL';
+            toggle.onclick = openModal;
+            playlistContainer.appendChild(toggle);
         }
     }
 
@@ -208,7 +220,6 @@
             modalPlaylistContainer.appendChild(empty);
             return;
         }
-
         playlist.forEach((track, idx) => {
             const item = document.createElement('div');
             item.className = 'playlist-item' + (idx === currentTrackIndex ? ' active' : '');
@@ -245,14 +256,11 @@
 
     function removeTrack(index) {
         if (index < 0 || index >= playlist.length) return;
-        const wasCurrent = (index === currentTrackIndex);
+        const wasCurrent = index === currentTrackIndex;
         const track = playlist[index];
-
         if (track.url) URL.revokeObjectURL(track.url);
         if (track.cover) URL.revokeObjectURL(track.cover);
-
         playlist.splice(index, 1);
-
         if (playlist.length === 0) {
             currentTrackIndex = -1;
             audio.pause();
@@ -264,9 +272,7 @@
             currentTimeEl.textContent = '00:00';
             durationTimeEl.textContent = '00:00';
             setCover(null);
-            if (modalOverlay.classList.contains('open')) {
-                renderModalPlaylist();
-            }
+            if (modalOverlay.classList.contains('open')) renderModalPlaylist();
         } else if (wasCurrent) {
             const newIndex = Math.min(index, playlist.length - 1);
             loadTrack(newIndex);
@@ -274,33 +280,26 @@
             currentTrackIndex--;
         }
         renderPlaylist();
-        if (modalOverlay.classList.contains('open')) {
-            renderModalPlaylist();
-        }
+        if (modalOverlay.classList.contains('open')) renderModalPlaylist();
         updateButtons();
     }
 
     function addFiles(filesArray) {
         if (!filesArray || filesArray.length === 0) return;
-
         const fileArray = filesArray.filter(file => {
             return file.type.startsWith('audio/') ||
                    file.type.startsWith('video/') ||
                    file.name.match(/\.(mp4|m4a|mov|avi|mkv|webm)$/i);
         });
-
         if (fileArray.length === 0) return;
 
         const promises = fileArray.map(file => {
             return new Promise((resolve) => {
                 const name = file.name.replace(/\.[^/.]+$/, '').toUpperCase();
                 const url = URL.createObjectURL(file);
-
                 extractCoverFromFile(file).then(coverUrl => {
                     resolve({ name, url, cover: coverUrl });
-                }).catch(() => {
-                    resolve({ name, url, cover: null });
-                });
+                }).catch(() => resolve({ name, url, cover: null }));
             });
         });
 
@@ -311,9 +310,7 @@
                 loadTrack(0);
             }
             updateButtons();
-            if (modalOverlay.classList.contains('open')) {
-                renderModalPlaylist();
-            }
+            if (modalOverlay.classList.contains('open')) renderModalPlaylist();
         });
     }
 
@@ -323,25 +320,17 @@
             const readEntry = (entry) => {
                 return new Promise((resolveEntry) => {
                     if (entry.isFile) {
-                        entry.file(file => {
-                            files.push(file);
-                            resolveEntry();
-                        }, () => resolveEntry());
+                        entry.file(file => { files.push(file); resolveEntry(); }, () => resolveEntry());
                     } else if (entry.isDirectory) {
                         const reader = entry.createReader();
                         const readEntries = () => {
                             reader.readEntries(entries => {
-                                if (entries.length === 0) {
-                                    resolveEntry();
-                                } else {
-                                    Promise.all(entries.map(e => readEntry(e))).then(readEntries);
-                                }
+                                if (entries.length === 0) resolveEntry();
+                                else Promise.all(entries.map(e => readEntry(e))).then(readEntries);
                             }, () => resolveEntry());
                         };
                         readEntries();
-                    } else {
-                        resolveEntry();
-                    }
+                    } else resolveEntry();
                 });
             };
             const promises = [];
@@ -349,9 +338,7 @@
                 const item = items[i];
                 if (item.kind === 'file') {
                     const entry = item.webkitGetAsEntry();
-                    if (entry) {
-                        promises.push(readEntry(entry));
-                    }
+                    if (entry) promises.push(readEntry(entry));
                 }
             }
             Promise.all(promises).then(() => resolve(files));
@@ -361,26 +348,19 @@
     function loadTrack(index) {
         if (index < 0 || index >= playlist.length) return;
         audio.pause();
-
         const track = playlist[index];
         currentTrackIndex = index;
-        currentFileURL = track.url;
         trackTitle.textContent = track.name;
-
         setCover(track.cover);
-
         audio.src = track.url;
         audio.load();
-
         progressBar.value = 0;
         currentTimeEl.textContent = '00:00';
         durationTimeEl.textContent = '00:00';
         isPlaying = false;
         setPlayIcon(false);
         renderPlaylist();
-        if (modalOverlay.classList.contains('open')) {
-            renderModalPlaylist();
-        }
+        if (modalOverlay.classList.contains('open')) renderModalPlaylist();
         updateButtons();
     }
 
@@ -423,19 +403,13 @@
         if (playlist.length === 0) return;
         let nextIndex;
         if (shuffleMode) {
-            if (playlist.length === 1) {
-                nextIndex = 0;
-            } else {
-                do {
-                    nextIndex = Math.floor(Math.random() * playlist.length);
-                } while (nextIndex === currentTrackIndex);
-            }
+            if (playlist.length === 1) nextIndex = 0;
+            else do { nextIndex = Math.floor(Math.random() * playlist.length); } while (nextIndex === currentTrackIndex);
         } else {
             nextIndex = currentTrackIndex + 1;
             if (nextIndex >= playlist.length) {
-                if (loopMode === 2) {
-                    nextIndex = 0;
-                } else {
+                if (loopMode === 2) nextIndex = 0;
+                else {
                     isPlaying = false;
                     setPlayIcon(false);
                     progressBar.value = 0;
@@ -455,12 +429,8 @@
         }
         let prevIndex = currentTrackIndex - 1;
         if (prevIndex < 0) {
-            if (loopMode === 2) {
-                prevIndex = playlist.length - 1;
-            } else {
-                audio.currentTime = 0;
-                return;
-            }
+            if (loopMode === 2) prevIndex = playlist.length - 1;
+            else { audio.currentTime = 0; return; }
         }
         playTrack(prevIndex);
     }
@@ -474,8 +444,7 @@
 
     function updateLoopIcon() {
         const use = loopIcon.querySelector('use');
-        const icons = ['#loop-off', '#loop-one', '#loop-all'];
-        use.setAttribute('href', icons[loopMode]);
+        use.setAttribute('href', ['#loop-off', '#loop-one', '#loop-all'][loopMode]);
     }
 
     function updateShuffleIcon() {
@@ -488,7 +457,7 @@
             audioCtx = new (window.AudioContext || window.webkitAudioContext)();
             analyser = audioCtx.createAnalyser();
             analyser.fftSize = 512;
-			analyser.smoothingTimeConstant = 0.4;
+            analyser.smoothingTimeConstant = 0.4;
             source = audioCtx.createMediaElementSource(audio);
             source.connect(analyser);
             analyser.connect(audioCtx.destination);
@@ -513,35 +482,28 @@
 
     function drawVisualizer() {
         if (!analyser) return;
-
         const logicalW = canvas._logicalWidth || 300;
         const logicalH = canvas._logicalHeight || 150;
         const dpr = canvas._dpr || 1;
-
         const bufferLength = analyser.frequencyBinCount;
         const dataArray = new Uint8Array(bufferLength);
         analyser.getByteFrequencyData(dataArray);
-
         ctx.setTransform(1, 0, 0, 1, 0, 0);
         ctx.clearRect(0, 0, canvas.width, canvas.height);
         ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
-
         const barsCount = Math.min(bufferLength, 64);
         const gap = barsCount > 32 ? 2 : 4;
         const drawWidth = Math.max(1, (logicalW - gap * (barsCount - 1)) / barsCount);
         let x = 0;
-
         for (let i = 0; i < barsCount; i++) {
             const value = dataArray[i];
             const barHeight = (value / 255) * logicalH;
-
             ctx.fillStyle = '#ff6a00';
             ctx.shadowBlur = 6;
             ctx.shadowColor = '#ff6a00';
             ctx.fillRect(x, logicalH - barHeight, drawWidth, barHeight);
             x += drawWidth + gap;
         }
-
         animationId = requestAnimationFrame(drawVisualizer);
     }
 
@@ -614,7 +576,6 @@
     });
 
     let menuOpen = false;
-
     loadBtn.addEventListener('click', (e) => {
         e.stopPropagation();
         menuOpen = !menuOpen;
@@ -632,11 +593,8 @@
         item.addEventListener('click', (e) => {
             e.stopPropagation();
             const action = item.dataset.action;
-            if (action === 'files') {
-                fileInput.click();
-            } else if (action === 'folder') {
-                folderInput.click();
-            }
+            if (action === 'files') fileInput.click();
+            else if (action === 'folder') folderInput.click();
             menuOpen = false;
             loadMenu.classList.remove('open');
         });
@@ -670,40 +628,17 @@
     document.addEventListener('keydown', (e) => {
         if (e.target.tagName === 'INPUT' && e.target.type !== 'range') return;
         switch (e.code) {
-            case 'Space':
-                e.preventDefault();
-                togglePlay();
-                break;
-            case 'ArrowLeft':
-                e.preventDefault();
-                if (audio.src) audio.currentTime = Math.max(0, audio.currentTime - 5);
-                break;
-            case 'ArrowRight':
-                e.preventDefault();
-                if (audio.src) audio.currentTime = Math.min(audio.duration || 0, audio.currentTime + 5);
-                break;
-            case 'ArrowUp':
-                e.preventDefault();
-                audio.volume = Math.min(1, audio.volume + 0.05);
-                volumeBar.value = audio.volume;
-                break;
-            case 'ArrowDown':
-                e.preventDefault();
-                audio.volume = Math.max(0, audio.volume - 0.05);
-                volumeBar.value = audio.volume;
-                break;
-            case 'Escape':
-                if (modalOverlay.classList.contains('open')) {
-                    closeModal();
-                }
-                break;
+            case 'Space': e.preventDefault(); togglePlay(); break;
+            case 'ArrowLeft': e.preventDefault(); if (audio.src) audio.currentTime = Math.max(0, audio.currentTime - 5); break;
+            case 'ArrowRight': e.preventDefault(); if (audio.src) audio.currentTime = Math.min(audio.duration || 0, audio.currentTime + 5); break;
+            case 'ArrowUp': e.preventDefault(); audio.volume = Math.min(1, audio.volume + 0.05); volumeBar.value = audio.volume; break;
+            case 'ArrowDown': e.preventDefault(); audio.volume = Math.max(0, audio.volume - 0.05); volumeBar.value = audio.volume; break;
+            case 'Escape': if (modalOverlay.classList.contains('open')) closeModal(); break;
         }
     });
 
     modalOverlay.addEventListener('click', (e) => {
-        if (e.target === modalOverlay) {
-            closeModal();
-        }
+        if (e.target === modalOverlay) closeModal();
     });
     modalCloseBtn.addEventListener('click', closeModal);
 
@@ -719,12 +654,10 @@
     setTimeout(initCanvas, 50);
     window.addEventListener('resize', initCanvas);
     window.addEventListener('load', () => setTimeout(initCanvas, 100));
-
     if (window.ResizeObserver) {
         const ro = new ResizeObserver(() => initCanvas());
         ro.observe(canvas.parentElement);
     }
-
     document.addEventListener('visibilitychange', () => {
         if (!document.hidden) initCanvas();
     });
