@@ -4,7 +4,7 @@
     let currentTrackIndex = -1;
     let playlist = [];
     let shuffleMode = false;
-    let loopMode = 0; // 0=off, 1=one, 2=all
+    let loopMode = 2; // 0=off, 1=one, 2=all
 
     const playBtn = document.getElementById('playBtn');
     const prevBtn = document.getElementById('prevBtn');
@@ -38,6 +38,36 @@
     let source = null;
     let animationId = null;
 
+    function loadSettings() {
+        try {
+            const saved = localStorage.getItem('playerSettings');
+            if (saved) {
+                const settings = JSON.parse(saved);
+                if (settings.volume !== undefined) {
+                    audio.volume = settings.volume;
+                    volumeBar.value = settings.volume;
+                }
+                if (settings.shuffle !== undefined) {
+                    shuffleMode = settings.shuffle;
+                }
+                if (settings.loop !== undefined) {
+                    loopMode = settings.loop;
+                }
+                updateButtons();
+            }
+        } catch (e) {}
+    }
+
+    function saveSettings() {
+        try {
+            localStorage.setItem('playerSettings', JSON.stringify({
+                volume: audio.volume,
+                shuffle: shuffleMode,
+                loop: loopMode
+            }));
+        } catch (e) {}
+    }
+
     function formatTime(seconds) {
         if (isNaN(seconds) || !isFinite(seconds) || seconds < 0) return '00:00';
         const m = Math.floor(seconds / 60);
@@ -61,33 +91,47 @@
                 URL.revokeObjectURL(url);
             };
 
-            video.addEventListener('loadedmetadata', () => {
-                video.currentTime = 0.1;
-            });
-            video.addEventListener('seeked', () => {
-                try {
-                    const cv = document.createElement('canvas');
-                    cv.width = video.videoWidth || 320;
-                    cv.height = video.videoHeight || 180;
-                    const c = cv.getContext('2d');
-                    c.drawImage(video, 0, 0, cv.width, cv.height);
-                    cv.toBlob((blob) => {
-                        if (blob) {
-                            const coverUrl = URL.createObjectURL(blob);
-                            cleanup();
-                            resolve(coverUrl);
-                        } else {
-                            cleanup();
-                            resolve(null);
-                        }
-                    }, 'image/jpeg', 0.8);
-                } catch (e) {
+            let resolved = false;
+
+            const onLoaded = () => {
+                if (resolved) return;
+                resolved = true;
+                requestAnimationFrame(() => {
+                    try {
+                        const cv = document.createElement('canvas');
+                        cv.width = video.videoWidth || 320;
+                        cv.height = video.videoHeight || 180;
+                        const c = cv.getContext('2d');
+                        c.drawImage(video, 0, 0, cv.width, cv.height);
+                        cv.toBlob((blob) => {
+                            if (blob) {
+                                const coverUrl = URL.createObjectURL(blob);
+                                cleanup();
+                                resolve(coverUrl);
+                            } else {
+                                cleanup();
+                                resolve(null);
+                            }
+                        }, 'image/jpeg', 0.8);
+                    } catch (e) {
+                        cleanup();
+                        resolve(null);
+                    }
+                });
+            };
+
+            video.addEventListener('loadeddata', onLoaded, { once: true });
+            video.addEventListener('error', () => {
+                if (!resolved) { resolved = true; cleanup(); resolve(null); }
+            }, { once: true });
+
+            setTimeout(() => {
+                if (!resolved) {
+                    resolved = true;
                     cleanup();
                     resolve(null);
                 }
-            });
-            video.addEventListener('error', () => { cleanup(); resolve(null); });
-            setTimeout(() => { cleanup(); resolve(null); }, 5000);
+            }, 5000);
         });
     }
 
@@ -161,13 +205,14 @@
             coverImage.src = url;
             coverImage.style.display = 'block';
             coverPlaceholder.style.display = 'none';
-            coverImage.classList.add('show');
-            coverImage.classList.remove('fade-in');
+            coverImage.classList.remove('show', 'fade-in');
+            void coverImage.offsetWidth;
+            coverImage.classList.add('show', 'fade-in');
             coverImage.onload = () => {};
             coverImage.onerror = () => {
                 coverImage.style.display = 'none';
                 coverPlaceholder.style.display = 'block';
-                coverImage.classList.remove('show');
+                coverImage.classList.remove('show', 'fade-in');
             };
         } else {
             coverImage.src = '';
@@ -204,7 +249,7 @@
         if (playlist.length > 3) {
             const toggle = document.createElement('div');
             toggle.className = 'playlist-toggle-item';
-            toggle.textContent = '▼ SHOW ALL';
+            toggle.textContent = 'SHOW ALL';
             toggle.onclick = openModal;
             playlistContainer.appendChild(toggle);
         }
@@ -282,6 +327,7 @@
         renderPlaylist();
         if (modalOverlay.classList.contains('open')) renderModalPlaylist();
         updateButtons();
+        saveSettings();
     }
 
     function addFiles(filesArray) {
@@ -292,6 +338,8 @@
                    file.name.match(/\.(mp4|m4a|mov|avi|mkv|webm)$/i);
         });
         if (fileArray.length === 0) return;
+
+        trackTitle.textContent = 'LOADING...';
 
         const promises = fileArray.map(file => {
             return new Promise((resolve) => {
@@ -311,6 +359,12 @@
             }
             updateButtons();
             if (modalOverlay.classList.contains('open')) renderModalPlaylist();
+            saveSettings();
+            if (currentTrackIndex >= 0) {
+                trackTitle.textContent = playlist[currentTrackIndex].name;
+            } else {
+                trackTitle.textContent = 'DROP AUDIO FILE';
+            }
         });
     }
 
@@ -362,6 +416,10 @@
         renderPlaylist();
         if (modalOverlay.classList.contains('open')) renderModalPlaylist();
         updateButtons();
+        audio.onerror = () => {
+            trackTitle.textContent = 'ERROR: ' + track.name;
+            console.error('Audio loading error:', audio.error);
+        };
     }
 
     function playTrack(index) {
@@ -440,6 +498,7 @@
         loopBtn.classList.toggle('active', loopMode > 0);
         updateLoopIcon();
         updateShuffleIcon();
+        saveSettings();
     }
 
     function updateLoopIcon() {
@@ -457,7 +516,6 @@
             audioCtx = new (window.AudioContext || window.webkitAudioContext)();
             analyser = audioCtx.createAnalyser();
             analyser.fftSize = 512;
-            analyser.smoothingTimeConstant = 0.4;
             source = audioCtx.createMediaElementSource(audio);
             source.connect(analyser);
             analyser.connect(audioCtx.destination);
@@ -553,6 +611,7 @@
 
     volumeBar.addEventListener('input', (e) => {
         audio.volume = parseFloat(e.target.value);
+        saveSettings();
     });
 
     playBtn.addEventListener('click', togglePlay);
@@ -631,8 +690,8 @@
             case 'Space': e.preventDefault(); togglePlay(); break;
             case 'ArrowLeft': e.preventDefault(); if (audio.src) audio.currentTime = Math.max(0, audio.currentTime - 5); break;
             case 'ArrowRight': e.preventDefault(); if (audio.src) audio.currentTime = Math.min(audio.duration || 0, audio.currentTime + 5); break;
-            case 'ArrowUp': e.preventDefault(); audio.volume = Math.min(1, audio.volume + 0.05); volumeBar.value = audio.volume; break;
-            case 'ArrowDown': e.preventDefault(); audio.volume = Math.max(0, audio.volume - 0.05); volumeBar.value = audio.volume; break;
+            case 'ArrowUp': e.preventDefault(); audio.volume = Math.min(1, audio.volume + 0.05); volumeBar.value = audio.volume; saveSettings(); break;
+            case 'ArrowDown': e.preventDefault(); audio.volume = Math.max(0, audio.volume - 0.05); volumeBar.value = audio.volume; saveSettings(); break;
             case 'Escape': if (modalOverlay.classList.contains('open')) closeModal(); break;
         }
     });
@@ -642,6 +701,7 @@
     });
     modalCloseBtn.addEventListener('click', closeModal);
 
+    loadSettings();
     audio.volume = parseFloat(volumeBar.value);
 
     function initCanvas() {
