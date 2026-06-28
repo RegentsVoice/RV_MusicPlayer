@@ -67,6 +67,7 @@ body::after {
     transform: translateY(10px) scale(.96) rotate(var(--rotate));
     filter: blur(6px);
     transition: opacity 3.5s ease, transform 3.5s ease, filter 3.5s ease;
+    will-change: transform, opacity;
 }
 
 .bg-word.visible {
@@ -521,42 +522,6 @@ body::after {
     border-radius: 2px;
 }
 
-@media (max-width: 700px) {
-    .frame {
-        padding: 1.8rem 1rem 1.5rem;
-    }
-    .cover-art-wrap {
-        flex: 0 0 100px;
-        width: 100px;
-        max-width: 100px;
-        height: 100px;
-    }
-    .visualizer-wrap {
-        height: 100px;
-    }
-    .player-row {
-        gap: 0.6rem;
-    }
-    .controls {
-        gap: 0.35rem;
-    }
-    .ctrl-btn {
-        width: 32px;
-        height: 32px;
-    }
-    .ctrl-btn svg {
-        width: 16px;
-        height: 16px;
-    }
-    .volume-bar {
-        width: 40px;
-    }
-    .modal-container {
-        max-height: 80vh;
-        width: 95vw;
-    }
-}
-
 .load-wrapper {
     position: relative;
     display: inline-block;
@@ -599,4 +564,109 @@ body::after {
 .load-menu-item:hover {
     background: rgba(255,90,0,.15);
     color: #ffa060;
+}
+
+@media (max-width: 1024px) {
+    .frame {
+        padding: 2rem 1.5rem 1.8rem;
+    }
+    .logo {
+        font-size: clamp(2rem, 5vw, 3.5rem);
+        margin-bottom: 1.2rem;
+    }
+    .cover-art-wrap {
+        flex: 0 0 120px;
+        width: 120px;
+        max-width: 120px;
+        height: 120px;
+    }
+    .visualizer-wrap {
+        height: 120px;
+    }
+    .player-row {
+        gap: 0.7rem;
+    }
+    .player-box {
+        gap: 0.5rem;
+    }
+    .controls {
+        gap: 0.3rem;
+    }
+    .ctrl-btn {
+        width: 30px;
+        height: 30px;
+    }
+    .ctrl-btn svg {
+        width: 16px;
+        height: 16px;
+    }
+    .volume-bar {
+        width: 40px;
+    }
+    .track-name {
+        font-size: 0.7rem;
+        letter-spacing: 2px;
+    }
+    .time {
+        font-size: 0.55rem;
+        min-width: 32px;
+    }
+    .playlist-item {
+        font-size: 0.5rem;
+        padding: 0.2rem 0.3rem;
+    }
+    .playlist-toggle-item {
+        font-size: 0.5rem;
+        padding: 0.2rem 0.3rem;
+    }
+    .playlist {
+        height: 100px;
+    }
+    .modal-container {
+        width: 95vw;
+        max-height: 80vh;
+    }
+    .modal-title {
+        font-size: 0.65rem;
+    }
+    .modal-playlist .playlist-item {
+        font-size: 0.55rem;
+        padding: 0.3rem 0.4rem;
+    }
+}
+
+@media (max-width: 600px) {
+    .frame {
+        padding: 1.2rem 0.8rem 1rem;
+    }
+    .cover-art-wrap {
+        flex: 0 0 80px;
+        width: 80px;
+        max-width: 80px;
+        height: 80px;
+    }
+    .visualizer-wrap {
+        height: 80px;
+    }
+    .ctrl-btn {
+        width: 28px;
+        height: 28px;
+    }
+    .ctrl-btn svg {
+        width: 14px;
+        height: 14px;
+    }
+    .volume-bar {
+        width: 30px;
+    }
+    .logo {
+        font-size: 1.8rem;
+    }
+    .corner {
+        width: 24px;
+        height: 24px;
+    }
+    .playlist {
+        height: 80px;
+    }
 }
