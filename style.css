@@ -92,17 +92,24 @@ body::after {
     display: flex;
     flex-direction: column;
     align-items: center;
+    transition: all 0.4s ease;
 }
 
 .corner {
     position: absolute;
     width: 42px;
     height: 42px;
+    transition: transform 0.4s ease;
 }
 .tl { top: 0; left: 0; border-top: 3px solid #ff5e00; border-left: 3px solid #ff5e00; }
 .tr { top: 0; right: 0; border-top: 3px solid #ff5e00; border-right: 3px solid #ff5e00; }
 .bl { bottom: 0; left: 0; border-bottom: 3px solid #ff5e00; border-left: 3px solid #ff5e00; }
 .br { bottom: 0; right: 0; border-bottom: 3px solid #ff5e00; border-right: 3px solid #ff5e00; }
+
+.frame.hidden-mode .bl,
+.frame.hidden-mode .br {
+    transform: translateY(-150px);
+}
 
 .logo {
     font-family: 'Times New Roman', Georgia, serif;
@@ -219,6 +226,7 @@ body::after {
     text-shadow: 0 0 8px rgba(255,100,0,.3);
     text-align: center;
     word-break: break-all;
+    transition: opacity 0.4s ease;
 }
 
 .progress-wrap {
@@ -226,6 +234,7 @@ body::after {
     align-items: center;
     gap: 0.6rem;
     width: 100%;
+    transition: opacity 0.4s ease;
 }
 .time {
     color: rgba(255,120,60,.75);
@@ -271,6 +280,7 @@ body::after {
     width: 100%;
     flex-wrap: wrap;
     justify-content: center;
+    transition: opacity 0.4s ease, pointer-events 0.4s ease;
 }
 .ctrl-btn {
     border: 1px solid rgba(255,90,0,.18);
@@ -356,6 +366,7 @@ body::after {
     flex-direction: column;
     gap: 0.2rem;
     overflow: hidden;
+    transition: opacity 0.4s ease, pointer-events 0.4s ease;
 }
 .playlist-item {
     color: rgba(255,130,60,.7);
@@ -408,6 +419,16 @@ body::after {
 .playlist-toggle-item:hover {
     color: rgba(255,130,60,.9);
     background: rgba(255,90,0,.05);
+}
+
+.frame.hidden-mode .controls,
+.frame.hidden-mode .playlist {
+    opacity: 0;
+    pointer-events: none;
+}
+
+#eyeBtn.active svg {
+    stroke: #ff6a00;
 }
 
 .modal-overlay {
@@ -633,6 +654,11 @@ body::after {
         font-size: 0.55rem;
         padding: 0.3rem 0.4rem;
     }
+
+    .frame.hidden-mode .bl,
+    .frame.hidden-mode .br {
+        transform: translateY(-120px);
+    }
 }
 
 @media (max-width: 600px) {
@@ -668,5 +694,10 @@ body::after {
     }
     .playlist {
         height: 80px;
+    }
+
+    .frame.hidden-mode .bl,
+    .frame.hidden-mode .br {
+        transform: translateY(-90px);
     }
 }
